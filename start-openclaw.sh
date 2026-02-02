@@ -1,26 +1,25 @@
 #!/bin/bash
-# Startup script for Moltbot in Cloudflare Sandbox
+# Startup script for OpenClaw in Cloudflare Sandbox
 # This script:
 # 1. Restores config from R2 backup if available
-# 2. Configures moltbot from environment variables
+# 2. Configures openclaw from environment variables
 # 3. Starts a background sync to backup config to R2
 # 4. Starts the gateway
 
 set -e
 
-# Check if clawdbot gateway is already running - bail early if so
-# Note: CLI is still named "clawdbot" until upstream renames it
-if pgrep -f "clawdbot gateway" > /dev/null 2>&1; then
-    echo "Moltbot gateway is already running, exiting."
+# Check if openclaw gateway is already running - bail early if so
+if pgrep -f "openclaw gateway" > /dev/null 2>&1; then
+    echo "Openclaw gateway is already running, exiting."
     exit 0
 fi
 
-# Paths (clawdbot paths are used internally - upstream hasn't renamed yet)
-CONFIG_DIR="/root/.clawdbot"
-CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
-TEMPLATE_DIR="/root/.clawdbot-templates"
-TEMPLATE_FILE="$TEMPLATE_DIR/moltbot.json.template"
-BACKUP_DIR="/data/moltbot"
+# Paths
+CONFIG_DIR="/root/.openclaw"
+CONFIG_FILE="$CONFIG_DIR/openclaw.json"
+TEMPLATE_DIR="/root/.openclaw-templates"
+TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
+BACKUP_DIR="/data/openclaw"
 
 echo "Config directory: $CONFIG_DIR"
 echo "Backup directory: $BACKUP_DIR"
@@ -31,9 +30,10 @@ mkdir -p "$CONFIG_DIR"
 # ============================================================
 # RESTORE FROM R2 BACKUP
 # ============================================================
-# Check if R2 backup exists by looking for clawdbot.json
+# Check if R2 backup exists by looking for openclaw.json
 # The BACKUP_DIR may exist but be empty if R2 was just mounted
-# Note: backup structure is $BACKUP_DIR/clawdbot/ and $BACKUP_DIR/skills/
+# Note: backup structure is $BACKUP_DIR/openclaw/ and $BACKUP_DIR/skills/
+# Legacy backup structure used $BACKUP_DIR/clawdbot/clawdbot.json
 
 # Helper function to check if R2 backup is newer than local
 should_restore_from_r2() {
@@ -72,21 +72,92 @@ should_restore_from_r2() {
     fi
 }
 
-if [ -f "$BACKUP_DIR/clawdbot/clawdbot.json" ]; then
+has_new_backup_layout() {
+    [ -f "$BACKUP_DIR/openclaw/openclaw.json" ]
+}
+
+normalize_local_config_name() {
+    if [ -f "$CONFIG_DIR/clawdbot.json" ] && [ ! -f "$CONFIG_FILE" ]; then
+        mv -f "$CONFIG_DIR/clawdbot.json" "$CONFIG_FILE"
+        echo "Renamed legacy config to openclaw.json"
+    fi
+}
+
+migrate_legacy_backup_dir() {
+    local source_dir="$1"
+
+    if has_new_backup_layout; then
+        return 0
+    fi
+
+    mkdir -p "$BACKUP_DIR/openclaw"
+    rsync -r --no-times "$source_dir/" "$BACKUP_DIR/openclaw/"
+
+    if [ -f "$BACKUP_DIR/openclaw/clawdbot.json" ] && [ ! -f "$BACKUP_DIR/openclaw/openclaw.json" ]; then
+        mv -f "$BACKUP_DIR/openclaw/clawdbot.json" "$BACKUP_DIR/openclaw/openclaw.json"
+        echo "Migrated legacy backup config to openclaw.json"
+    fi
+}
+
+move_legacy_backup_flat() {
+    if has_new_backup_layout; then
+        return 0
+    fi
+
+    mkdir -p "$BACKUP_DIR/openclaw"
+    rsync -r --no-times --exclude 'skills' --exclude '.last-sync' "$BACKUP_DIR/" "$BACKUP_DIR/openclaw/"
+
+    if [ -f "$BACKUP_DIR/openclaw/clawdbot.json" ] && [ ! -f "$BACKUP_DIR/openclaw/openclaw.json" ]; then
+        mv -f "$BACKUP_DIR/openclaw/clawdbot.json" "$BACKUP_DIR/openclaw/openclaw.json"
+        echo "Migrated legacy backup config to openclaw.json"
+    fi
+}
+
+should_restore_legacy_from_r2() {
+    if has_new_backup_layout; then
+        echo "New backup data exists, skipping legacy restore"
+        return 1
+    fi
+    should_restore_from_r2
+}
+
+if [ -f "$BACKUP_DIR/openclaw/openclaw.json" ]; then
     if should_restore_from_r2; then
-        echo "Restoring from R2 backup at $BACKUP_DIR/clawdbot..."
-        cp -a "$BACKUP_DIR/clawdbot/." "$CONFIG_DIR/"
+        echo "Restoring from R2 backup at $BACKUP_DIR/openclaw..."
+        cp -a "$BACKUP_DIR/openclaw/." "$CONFIG_DIR/"
         # Copy the sync timestamp to local so we know what version we have
         cp -f "$BACKUP_DIR/.last-sync" "$CONFIG_DIR/.last-sync" 2>/dev/null || true
         echo "Restored config from R2 backup"
     fi
-elif [ -f "$BACKUP_DIR/clawdbot.json" ]; then
+elif [ -f "$BACKUP_DIR/clawdbot/clawdbot.json" ]; then
+    # Legacy backup format (clawdbot directory)
+    if should_restore_legacy_from_r2; then
+        echo "Restoring from legacy clawdbot backup at $BACKUP_DIR/clawdbot..."
+        cp -a "$BACKUP_DIR/clawdbot/." "$CONFIG_DIR/"
+        cp -f "$BACKUP_DIR/.last-sync" "$CONFIG_DIR/.last-sync" 2>/dev/null || true
+        normalize_local_config_name
+        migrate_legacy_backup_dir "$BACKUP_DIR/clawdbot"
+        echo "Restored config from legacy clawdbot backup"
+    fi
+elif [ -f "$BACKUP_DIR/openclaw.json" ]; then
     # Legacy backup format (flat structure)
-    if should_restore_from_r2; then
+    if should_restore_legacy_from_r2; then
         echo "Restoring from legacy R2 backup at $BACKUP_DIR..."
         cp -a "$BACKUP_DIR/." "$CONFIG_DIR/"
         cp -f "$BACKUP_DIR/.last-sync" "$CONFIG_DIR/.last-sync" 2>/dev/null || true
+        normalize_local_config_name
+        move_legacy_backup_flat
         echo "Restored config from legacy R2 backup"
+    fi
+elif [ -f "$BACKUP_DIR/clawdbot.json" ]; then
+    # Legacy flat backup with clawdbot.json
+    if should_restore_legacy_from_r2; then
+        echo "Restoring from legacy clawdbot backup at $BACKUP_DIR..."
+        cp -a "$BACKUP_DIR/." "$CONFIG_DIR/"
+        cp -f "$BACKUP_DIR/.last-sync" "$CONFIG_DIR/.last-sync" 2>/dev/null || true
+        normalize_local_config_name
+        move_legacy_backup_flat
+        echo "Restored config from legacy clawdbot backup"
     fi
 elif [ -d "$BACKUP_DIR" ]; then
     echo "R2 mounted at $BACKUP_DIR but no backup data found yet"
@@ -95,7 +166,7 @@ else
 fi
 
 # Restore skills from R2 backup if available (only if R2 is newer)
-SKILLS_DIR="/root/clawd/skills"
+SKILLS_DIR="/root/openclaw/skills"
 if [ -d "$BACKUP_DIR/skills" ] && [ "$(ls -A $BACKUP_DIR/skills 2>/dev/null)" ]; then
     if should_restore_from_r2; then
         echo "Restoring skills from $BACKUP_DIR/skills..."
@@ -116,7 +187,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 {
   "agents": {
     "defaults": {
-      "workspace": "/root/clawd"
+      "workspace": "/root/openclaw"
     }
   },
   "gateway": {
@@ -136,7 +207,7 @@ fi
 node << EOFNODE
 const fs = require('fs');
 
-const configPath = '/root/.clawdbot/clawdbot.json';
+const configPath = '/root/.openclaw/openclaw.json';
 console.log('Updating config at:', configPath);
 let config = {};
 
@@ -171,13 +242,13 @@ config.gateway.mode = 'local';
 config.gateway.trustedProxies = ['10.1.0.0'];
 
 // Set gateway token if provided
-if (process.env.CLAWDBOT_GATEWAY_TOKEN) {
+if (process.env.OPENCLAW_GATEWAY_TOKEN) {
     config.gateway.auth = config.gateway.auth || {};
-    config.gateway.auth.token = process.env.CLAWDBOT_GATEWAY_TOKEN;
+    config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
 }
 
 // Allow insecure auth for dev mode
-if (process.env.CLAWDBOT_DEV_MODE === 'true') {
+if (process.env.OPENCLAW_DEV_MODE === 'true') {
     config.gateway.controlUi = config.gateway.controlUi || {};
     config.gateway.controlUi.allowInsecureAuth = true;
 }
@@ -217,7 +288,7 @@ const isOpenAI = baseUrl.endsWith('/openai');
 
 if (isOpenAI) {
     // Create custom openai provider config with baseUrl override
-    // Omit apiKey so moltbot falls back to OPENAI_API_KEY env var
+    // Omit apiKey so openclaw falls back to OPENAI_API_KEY env var
     console.log('Configuring OpenAI provider with base URL:', baseUrl);
     config.models = config.models || {};
     config.models.providers = config.models.providers || {};
@@ -275,20 +346,20 @@ EOFNODE
 # START GATEWAY
 # ============================================================
 # Note: R2 backup sync is handled by the Worker's cron trigger
-echo "Starting Moltbot Gateway..."
+echo "Starting OpenClaw Gateway..."
 echo "Gateway will be available on port 18789"
 
 # Clean up stale lock files
-rm -f /tmp/clawdbot-gateway.lock 2>/dev/null || true
+rm -f /tmp/openclaw-gateway.lock 2>/dev/null || true
 rm -f "$CONFIG_DIR/gateway.lock" 2>/dev/null || true
 
 BIND_MODE="lan"
-echo "Dev mode: ${CLAWDBOT_DEV_MODE:-false}, Bind mode: $BIND_MODE"
+echo "Dev mode: ${OPENCLAW_DEV_MODE:-false}, Bind mode: $BIND_MODE"
 
-if [ -n "$CLAWDBOT_GATEWAY_TOKEN" ]; then
+if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
     echo "Starting gateway with token auth..."
-    exec clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE" --token "$CLAWDBOT_GATEWAY_TOKEN"
+    exec openclaw gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE" --token "$OPENCLAW_GATEWAY_TOKEN"
 else
     echo "Starting gateway with device pairing (no token)..."
-    exec clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE"
+    exec openclaw gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE"
 fi
