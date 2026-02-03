@@ -136,6 +136,7 @@ For local development, create a `.dev.vars` file with:
 ```bash
 DEV_MODE=true               # Skip Cloudflare Access auth + bypass device pairing
 DEBUG_ROUTES=true           # Enable /debug/* routes (optional)
+OPENCLAW_VERBOSE=true       # Enable verbose gateway logs (optional)
 ```
 
 ## Authentication

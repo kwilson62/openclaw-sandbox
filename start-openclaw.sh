@@ -353,13 +353,19 @@ echo "Gateway will be available on port 18789"
 rm -f /tmp/openclaw-gateway.lock 2>/dev/null || true
 rm -f "$CONFIG_DIR/gateway.lock" 2>/dev/null || true
 
-BIND_MODE="lan"
-echo "Dev mode: ${OPENCLAW_DEV_MODE:-false}, Bind mode: $BIND_MODE"
+# Bind mode can be overridden via OPENCLAW_BIND_MODE (defaults to "lan")
+BIND_MODE="${OPENCLAW_BIND_MODE:-lan}"
+# Verbose logging can be enabled via OPENCLAW_VERBOSE=true
+VERBOSE_FLAG=""
+if [ "${OPENCLAW_VERBOSE:-false}" = "true" ] || [ "${OPENCLAW_VERBOSE:-false}" = "1" ]; then
+    VERBOSE_FLAG="--verbose"
+fi
+echo "Dev mode: ${OPENCLAW_DEV_MODE:-false}, Bind mode: $BIND_MODE, Verbose: ${OPENCLAW_VERBOSE:-false}"
 
 if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
     echo "Starting gateway with token auth..."
-    exec openclaw gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE" --token "$OPENCLAW_GATEWAY_TOKEN"
+    exec openclaw gateway --port 18789 $VERBOSE_FLAG --allow-unconfigured --bind "$BIND_MODE" --token "$OPENCLAW_GATEWAY_TOKEN"
 else
     echo "Starting gateway with device pairing (no token)..."
-    exec openclaw gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE"
+    exec openclaw gateway --port 18789 $VERBOSE_FLAG --allow-unconfigured --bind "$BIND_MODE"
 fi
