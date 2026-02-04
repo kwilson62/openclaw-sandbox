@@ -114,7 +114,11 @@ describe('syncToR2', () => {
       expect(rsyncCall).toContain('--no-times');
       expect(rsyncCall).toContain('--delete');
       expect(rsyncCall).toContain('/root/.openclaw/');
-      expect(rsyncCall).toContain('/data/openclaw/');
+      expect(rsyncCall).toContain('/root/openclaw/skills/');
+      expect(rsyncCall).toContain('/root/openclaw/');
+      expect(rsyncCall).toContain('/data/openclaw/openclaw/');
+      expect(rsyncCall).toContain('/data/openclaw/skills/');
+      expect(rsyncCall).toContain('/data/openclaw/workspace/');
     });
   });
 });

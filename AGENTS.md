@@ -239,5 +239,6 @@ R2 is mounted via s3fs at `/data/openclaw`. Important gotchas:
 - **Mount checking**: Don't rely on `sandbox.mountBucket()` error messages to detect "already mounted" state. Instead, check `mount | grep s3fs` to verify the mount status.
 
 - **Never delete R2 data**: The mount directory `/data/openclaw` IS the R2 bucket. Running `rm -rf /data/openclaw/*` will DELETE your backup data. Always check mount status before any destructive operations.
+- **Backup layout**: Backups are stored under `/data/openclaw/openclaw/` (config), `/data/openclaw/skills/` (skills), and `/data/openclaw/workspace/` (agent workspace).
 
 - **Process status**: The sandbox API's `proc.status` may not update immediately after a process completes. Instead of checking `proc.status === 'completed'`, verify success by checking for expected output (e.g., timestamp file exists after sync).

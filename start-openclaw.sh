@@ -20,19 +20,22 @@ CONFIG_FILE="$CONFIG_DIR/openclaw.json"
 TEMPLATE_DIR="/root/.openclaw-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/openclaw.json.template"
 BACKUP_DIR="/data/openclaw"
+WORKSPACE_DIR="/root/openclaw"
+WORKSPACE_BACKUP_DIR="$BACKUP_DIR/workspace"
 
 echo "Config directory: $CONFIG_DIR"
 echo "Backup directory: $BACKUP_DIR"
 
-# Create config directory
+# Create config and workspace directories
 mkdir -p "$CONFIG_DIR"
+mkdir -p "$WORKSPACE_DIR"
 
 # ============================================================
 # RESTORE FROM R2 BACKUP
 # ============================================================
 # Check if R2 backup exists by looking for openclaw.json
 # The BACKUP_DIR may exist but be empty if R2 was just mounted
-# Note: backup structure is $BACKUP_DIR/openclaw/ and $BACKUP_DIR/skills/
+# Note: backup structure is $BACKUP_DIR/openclaw/, $BACKUP_DIR/skills/, and $BACKUP_DIR/workspace/
 # Legacy backup structure used $BACKUP_DIR/clawdbot/clawdbot.json
 
 # Helper function to check if R2 backup is newer than local
@@ -173,6 +176,15 @@ if [ -d "$BACKUP_DIR/skills" ] && [ "$(ls -A $BACKUP_DIR/skills 2>/dev/null)" ];
         mkdir -p "$SKILLS_DIR"
         cp -a "$BACKUP_DIR/skills/." "$SKILLS_DIR/"
         echo "Restored skills from R2 backup"
+    fi
+fi
+
+# Restore workspace from R2 backup if available (only if R2 is newer)
+if [ -d "$WORKSPACE_BACKUP_DIR" ] && [ "$(ls -A $WORKSPACE_BACKUP_DIR 2>/dev/null)" ]; then
+    if should_restore_from_r2; then
+        echo "Restoring workspace from $WORKSPACE_BACKUP_DIR..."
+        rsync -r --no-times --exclude 'skills' --exclude '*.lock' --exclude '*.log' --exclude '*.tmp' "$WORKSPACE_BACKUP_DIR/" "$WORKSPACE_DIR/"
+        echo "Restored workspace from R2 backup"
     fi
 fi
 

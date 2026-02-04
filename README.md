@@ -198,11 +198,13 @@ R2 storage uses a backup/restore approach for simplicity:
 
 **On container startup:**
 - If R2 is mounted and contains backup data, it's restored to the openclaw config directory
+- The agent workspace is restored to `/root/openclaw` so files persist across restarts
 - OpenClaw uses its default paths (no special configuration needed)
 
 **During operation:**
 - A cron job runs every 5 minutes to sync the openclaw config to R2
 - You can also trigger a manual backup from the admin UI at `/_admin/`
+ - The agent workspace (files created by the agent) is also synced to R2
 
 **In the admin UI:**
 - When R2 is configured, you'll see "Last backup: [timestamp]"
